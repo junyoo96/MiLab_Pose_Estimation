@@ -84,7 +84,13 @@ class DataWriter():
         
         #jun
         isLastFrameFirst=True
+        #변경(0.7 or 0.8)
+        confidence_threshold=0.7
+        #고정
+        similarity_threshold=0.7
         compared_pose_values=[]
+        #human 몇명 감지됐는지 확인
+        num_human_list=[]
         print("start check!")
         while True:
             
@@ -99,13 +105,22 @@ class DataWriter():
                 print("Results have been written to json.")
 
                 # jun
-                print(compared_pose_values)
+                print("compared_pose_values_num",len(compared_pose_values))
+                print("human_list",num_human_list,sum(num_human_list))
+                
+                plt.ylim(0,1)
                 plt.plot([i for i in range(len(compared_pose_values))],compared_pose_values)
+                different_frame_indices=[idx for idx,val in enumerate(compared_pose_values) if val<=similarity_threshold]
+                different_frame_string=""
+                for frame_index in different_frame_indices:
+                    different_frame_string+=str(frame_index-1)+"->"+str(frame_index)+"/"
+                    
+                
                 max_difference_frame=compared_pose_values.index(min(compared_pose_values)) 
-                plt.title("Most diffrent frame: "+str(max_difference_frame)+"->"+str(max_difference_frame+1)+"/"+str(len(compared_pose_values)))
+                plt.title("DifferentFrame: "+different_frame_string+"#f:"+str(len(compared_pose_values))+"/st:"+str(similarity_threshold)+"/ct:"+str(confidence_threshold))
                 plt.xlabel("Frame")
                 plt.ylabel("Similarity")
-                plt.savefig("video_output/compared_value_fig_1.png",dpi=300)
+                plt.savefig("video_output/compared_value_fig_"+"ct("+str(confidence_threshold)+")_"+"st("+str(similarity_threshold)+")"+".png",dpi=300)
                 print("Save compared value plot between frame")
                 # jun
 
@@ -126,7 +141,11 @@ class DataWriter():
                     self.eval_joints = [*range(0,26)]
                 pose_coords = []
                 pose_scores = []
-                print("human number",hm_data.shape[0])
+                
+                #jun
+                num_human_list.append(hm_data.shape[0])
+                #jun
+
                 for i in range(hm_data.shape[0]):
                     bbox = cropped_boxes[i].tolist()
                     pose_coord, pose_score = self.heatmap_to_coord(hm_data[i][self.eval_joints], bbox, hm_shape=hm_size, norm_type=norm_type)
@@ -146,7 +165,7 @@ class DataWriter():
                         # compared_pose_values.append(np.sum(save_compared_value))
 
                         #방법 2. OKS로 frame간의 값 비교 
-                        compared_value=self.computeOks(last_frame_keypoints, pose_coord,last_pose_score,bbox,confidence_threshold=0.5)
+                        compared_value=self.computeOks(last_frame_keypoints, pose_coord,last_pose_score,bbox,confidence_threshold)
                         print("compared_value",compared_value)
                         compared_pose_values.append(compared_value)
                         last_frame_keypoints=pose_coord
@@ -269,6 +288,7 @@ class DataWriter():
         # print("current_frame_keypoints",current_frame_keypoints)
         # print("last_pose_score",last_pose_score)
         # print("bbox",bbox)
+        
         
         last_frame_keypoints_np=np.array(last_frame_keypoints)
         last_pose_score_np=np.array(last_pose_score)
