@@ -84,14 +84,27 @@ class DataWriter():
         
         #jun
         isLastFrameFirst=True
-        #변경(0.7 or 0.8)
+        #고정(0.7이 제일 좋음)
         confidence_threshold=0.7
-        #고정
-        similarity_threshold=0.7
+        #자세 변화 감지 민감도
+        similarity_threshold=0.8
         compared_pose_values=[]
         #human 몇명 감지됐는지 확인
         num_human_list=[]
-        print("start check!")
+        #oks 비교하는 frame 간격 몇 으로 할지
+        oks_check_interval=3
+        #frame 몇 번 돌았는지 확인 
+        frame_check_count=0
+        #last frame keypoints 저장 변수
+        last_frame_keypoints_set=np.zeros((17,2))
+        current_frame_keypoints_set=np.zeros((17,2))
+        last_pose_score_set=np.zeros((17,1))
+        current_pose_score_set=np.zeros((17,1))
+        print("Start check!")
+        
+
+        #jun
+
         while True:
             
 
@@ -105,6 +118,7 @@ class DataWriter():
                 print("Results have been written to json.")
 
                 # jun
+                #Plot results 
                 print("compared_pose_values_num",len(compared_pose_values))
                 print("human_list",num_human_list,sum(num_human_list))
                 
@@ -118,7 +132,7 @@ class DataWriter():
                 
                 max_difference_frame=compared_pose_values.index(min(compared_pose_values)) 
                 plt.title("DifferentFrame: "+different_frame_string+"#f:"+str(len(compared_pose_values))+"/st:"+str(similarity_threshold)+"/ct:"+str(confidence_threshold))
-                plt.xlabel("Frame")
+                plt.xlabel("Frame Interval : "+str(oks_check_interval))
                 plt.ylabel("Similarity")
                 plt.savefig("video_output/compared_value_fig_"+"ct("+str(confidence_threshold)+")_"+"st("+str(similarity_threshold)+")"+".png",dpi=300)
                 print("Save compared value plot between frame")
@@ -143,35 +157,49 @@ class DataWriter():
                 pose_scores = []
                 
                 #jun
+                #끝났을 때 각 프레임에 사람 몇명있는지 체크하기 위해 저장 
                 num_human_list.append(hm_data.shape[0])
                 #jun
 
                 for i in range(hm_data.shape[0]):
                     bbox = cropped_boxes[i].tolist()
                     pose_coord, pose_score = self.heatmap_to_coord(hm_data[i][self.eval_joints], bbox, hm_shape=hm_size, norm_type=norm_type)
-                    # print("pose_coord",len(pose_coord),pose_coord)
                     
+                    frame_check_count+=1
                     #jun : 이전 frame과 현재 frame간의 값 비교 
                     if isLastFrameFirst:
-                        last_frame_keypoints=pose_coord
-                        last_pose_score=pose_score
-                        isLastFrameFirst=False
+                        last_frame_keypoints_set+=pose_coord
+                        last_pose_score_set+=pose_score
+
+                        if frame_check_count%oks_check_interval==0:
+                            last_frame_keypoints_set/=oks_check_interval
+                            last_pose_score_set/=oks_check_interval
+                            isLastFrameFirst=False
                     else:
-                        # print("check_last",last_frame_keypoints)
-                        # print("check_current",pose_coord)
-                        #방법 1. 단순히 각 x,y좌표끼리 거리 구해서 더한 것으로 frame간의 값 비교
-                        # save_compared_value=abs(np.array(last_frame_keypoints)-np.array(pose_coord))
-                        # last_frame_keypoints=pose_coord
-                        # compared_pose_values.append(np.sum(save_compared_value))
+                        current_frame_keypoints_set+=pose_coord
+                        current_pose_score_set+=pose_score
+                        
+                        if frame_check_count%oks_check_interval==0:
+                            current_frame_keypoints_set/=oks_check_interval
+                            current_pose_score_set/=oks_check_interval
+                            #방법 2. OKS로 frame간의 값 비교 
+                            compared_value=self.computeOks(last_frame_keypoints_set, current_frame_keypoints_set,last_pose_score_set,bbox,confidence_threshold)
+                            
+                            if compared_value<similarity_threshold:
+                                print("Alert!Alert!Alert!Alert!Alert!Alert!Alert!Alert!Alert!")
+                            # print("sum_frame_keypoints",((last_frame_keypoints_set+current_frame_keypoints_set)/2))
+                            # print("compared_value",compared_value)
+                            compared_pose_values.append(compared_value)
+                            last_frame_keypoints_set=current_frame_keypoints_set
+                            last_pose_score_set=current_pose_score_set
 
-                        #방법 2. OKS로 frame간의 값 비교 
-                        compared_value=self.computeOks(last_frame_keypoints, pose_coord,last_pose_score,bbox,confidence_threshold)
-                        print("compared_value",compared_value)
-                        compared_pose_values.append(compared_value)
-                        last_frame_keypoints=pose_coord
-                        last_pose_score=pose_score
+                            #초기화
+                            current_frame_keypoints_set=np.zeros((17,2))
+                            current_pose_score_set=np.zeros((17,1))
 
 
+
+                    
                         # print("compared",np.sum(save_compared_value))
 
                     #jun : 이전 frame과 현재 frame간의 값 비교
