@@ -8,6 +8,7 @@ import numpy as np
 import sys
 import matplotlib.pyplot as plt
 import time 
+from collections import deque
 #jun finish
 
 # # For static images:
@@ -50,8 +51,12 @@ shaking_sitting_threshold_max=0.8
 
 
 compared_pose_values=[]
-#human 몇명 감지됐는지 확인
-# num_human_list=[]
+
+#realtime plot 몇개 단위로 출력할지 
+isRealtimePlotActivated=True
+realtime_plot_num=10
+realtime_plot_comparedposevalues=deque([])
+
 #oks 비교하는 frame 간격 몇 으로 할지
 oks_check_interval=10
 #frame 몇 번 돌았는지 확인 
@@ -68,8 +73,9 @@ current_pose_score_set=np.zeros((possible_num_keypoints,1))
 #Video로 만들 frame 저장 변수
 video_frames=[]
 video_save_path="video_output/test.mp4"
+big_difference_video_save_path="video_output/test_big_difference.mp4"
 
-def detectAnomaly(current_pose_landmarks,bbox):
+def detectAnomaly(current_pose_landmarks,bbox,isRealtimePlotActivated,realtime_plot_ax):
 
     global isLastFrameFirst
     #고정(0.7이 제일 좋음)
@@ -120,6 +126,15 @@ def detectAnomaly(current_pose_landmarks,bbox):
             #OKS로 frame간의 값 비교 
             compared_value=computeOks(last_frame_keypoints_set, current_frame_keypoints_set,last_pose_score_set,bbox,confidence_threshold=0.5)
             print("compared_value:",compared_value)
+
+            #실시간 plot 
+            if isRealtimePlotActivated==True:
+                if len(realtime_plot_comparedposevalues)==5:
+                    realtime_plot_comparedposevalues.popleft()
+                    realtime_plot_comparedposevalues.append(compared_value)
+                else:
+                    realtime_plot_comparedposevalues.append(compared_value)
+                showRealtimePlot(realtime_plot_num,realtime_plot_comparedposevalues,frame_check_count,realtime_plot_ax)
 
             compared_pose_values.append(compared_value)
             last_frame_keypoints_set=current_frame_keypoints_set
@@ -214,7 +229,7 @@ def computeOks(last_frame_keypoints_np, current_frame_keypoints,last_pose_score_
 
     #bounding box 처리
     bb = bbox
-    print(bb)
+    # print(bb)
     #bb[0] : top left x,bb[1]:top left y,bb[2]:width,bb[3]:height
     #x0 : down left x
     #x1 : ?
@@ -268,25 +283,84 @@ def computeOks(last_frame_keypoints_np, current_frame_keypoints,last_pose_score_
 
     return ious
 
+
+def showRealtimePlot(realtime_plot_num,realtime_plot_comparedposevalues,frame_check_count,realtime_plot_ax):
+
+    x_max_val=frame_check_count+(realtime_plot_num-1)*oks_check_interval
+
+    realtime_plot_ax.set_xlim([frame_check_count,x_max_val])
+    
+    xticks_val=[i for i in range(frame_check_count,x_max_val+1,oks_check_interval)]
+    realtime_plot_ax.set_xticks(xticks_val)
+    realtime_plot_ax.set_ylim([0,1])
+    
+    x_val=[i for i in range(frame_check_count,frame_check_count+(len(realtime_plot_comparedposevalues)-1)*oks_check_interval+1,oks_check_interval)]
+    print("x_val",x_val)
+    print("realtime_plot_comparedposevalues",len(realtime_plot_comparedposevalues))
+    realtime_plot_ax.plot(x_val,realtime_plot_comparedposevalues,color='blue')
+    
+    figure.canvas.draw()
+    
+    figure.canvas.flush_events()
+    # time.sleep(0.5)
+    
+
+
 def savePlot():
 
     print("compared_pose_values_num",len(compared_pose_values))
     print("compared_pose_values",compared_pose_values)
+    plt.figure(figsize=(15,15))
     plt.ylim(0,1)
-    plt.plot([i for i in range(len(compared_pose_values))],compared_pose_values)
+    plt.plot([(i+2)*oks_check_interval for i in range(len(compared_pose_values))],compared_pose_values)
     different_frame_indices=[idx for idx,val in enumerate(compared_pose_values) if val<=stand_threshold_max]
     different_frame_string=""
     for frame_index in different_frame_indices:
         different_frame_string+=str(frame_index-1)+"->"+str(frame_index)+"/"
         
     max_difference_frame=compared_pose_values.index(min(compared_pose_values)) 
-    plt.title("DifferentFrame: "+different_frame_string+"#f:"+str(len(compared_pose_values))+"/st:"+str(stand_threshold_max)+"/ct:"+str(confidence_threshold))
+    plt.title("Total Similarity: "+"#f:"+str(len(compared_pose_values))+"/st:"+str(stand_threshold_max)+"/ct:"+str(confidence_threshold))
     plt.xlabel("Frame Interval : "+str(oks_check_interval))
     plt.ylabel("Similarity")
-    plt.savefig("video_output/compared_value_fig_"+"ct("+str(confidence_threshold)+")_"+"st("+str(stand_threshold_max)+")"+".png",dpi=300)
+    plt.show()
+    plt.savefig("video_output/compared_value_fig_"+"ct("+str(confidence_threshold)+")_"+"st("+str(stand_threshold_max)+")"+".png",dpi=200)
     print("Save compared value plot between frame")
     # jun
+
+
+def saveBigDifferenceVideo(frame_array,save_path,fps,size):
     
+
+    big_difference_frame_idx=[(frame_idx+2)*oks_check_interval for frame_idx,val in enumerate(compared_pose_values) if val<stand_threshold_max]
+    # big_difference_frame_idx=(big_difference_frame_idx+2)*oks_check_interval
+    # print(big_difference_frame_idx)
+
+    if not big_difference_frame_idx:
+        return
+
+    out = cv2.VideoWriter(save_path,cv2.VideoWriter_fourcc(*'DIVX'), fps, size)
+
+    target_frame=big_difference_frame_idx[0]
+    # print("target_frame",target_frame)
+    target_frame_start=0
+    target_frame_end=0
+
+    frame_coverage=50
+
+    if target_frame-frame_coverage>0:
+        target_frame_start=target_frame-frame_coverage
+    else:
+        target_frame_start=0
+    
+    if target_frame+frame_coverage+1>len(frame_array):
+        target_frame_end=len(frame_array)-1
+    else:
+        target_frame_end=target_frame+frame_coverage+1
+
+    for frame in frame_array[target_frame_start:target_frame_end]:
+        # writing to a image array
+        out.write(frame)
+    out.release()
 
 def saveVideo(frame_array,save_path,fps,size):
     out = cv2.VideoWriter(save_path,cv2.VideoWriter_fourcc(*'DIVX'), fps, size)
@@ -305,11 +379,23 @@ alert_count=0
 #current state
 cur_state="Normal"
 
+realtime_plot_ax=None
+#realtime plot 
+if isRealtimePlotActivated:
+    plt.ion()
+    figure, realtime_plot_ax = plt.subplots(figsize=(8,6))
+    
+
+    plt.title("Realtime plot",fontsize=25)
+
+    plt.xlabel("Frames",fontsize=18)
+    plt.ylabel("Similarity",fontsize=18)
 
 # For webcam input:
 pose = mp_pose.Pose(
     min_detection_confidence=0.5, min_tracking_confidence=0.5)
 cap = cv2.VideoCapture(0)
+
 while cap.isOpened():
   success, image = cap.read()
 
@@ -347,8 +433,8 @@ while cap.isOpened():
   if results.pose_landmarks is None:
     cur_state="No person"
   else:
-    cur_state=detectAnomaly(results.pose_landmarks.landmark,bbox)
-
+    cur_state=detectAnomaly(results.pose_landmarks.landmark,bbox,isRealtimePlotActivated,realtime_plot_ax)
+        
   #jun_finish
 
   # Draw the pose annotation on the image.
@@ -375,9 +461,6 @@ while cap.isOpened():
   video_frames.append(image)
 
   
-
-
-
   if frame_check_count==300:
       break
   if cv2.waitKey(5) & 0xFF == 27:
@@ -386,8 +469,15 @@ pose.close()
 cap.release()
 
 #Plot results
+plt.close()
 savePlot()
-#Save video
+
+#Save big diffrence momment in video
+saveBigDifferenceVideo(video_frames,big_difference_video_save_path,
+    fps=round(sum(frame_avg)/len(frame_avg),1),
+    size=(image_width,image_height))
+
+#Save entire video
 saveVideo(video_frames,video_save_path,
     fps=round(sum(frame_avg)/len(frame_avg),1),
     size=(image_width,image_height))
