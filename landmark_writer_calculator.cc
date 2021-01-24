@@ -38,7 +38,7 @@ class PoseAnomalyDetection{
     //State variable
     bool isLastFrameFirst;
     int frameCount;
-    int oksCheckInterval;
+    
 
     //
     int possibleKeypointsNum;
@@ -47,7 +47,6 @@ class PoseAnomalyDetection{
     bool isRealtimePlotActivated;
     int realtimePlotNum;
     // realtime_plot_comparedposevalues=deque([])
-
 
     std::list<double> comparedPoseValues;
 
@@ -59,6 +58,9 @@ class PoseAnomalyDetection{
     Eigen::MatrixXd curFrameLandmarksXSet;
     Eigen::MatrixXd curFrameLandmarksYSet;
     Eigen::MatrixXd curFrameLandmarksVisSet;
+
+  public:
+    int oksCheckInterval;
 
   public:
     PoseAnomalyDetection(){
@@ -183,6 +185,7 @@ std::tuple<int,double> PoseAnomalyDetection::detectAnomaly(std::tuple<Eigen::Mat
   // std::cout<<image_width<<","<<image_height<<std::endl;
 
   if (isLastFrameFirst==true){
+    std::cout<<"first!"<<std::endl;
     lastFrameLandmarksXSet=lastFrameLandmarksXSet+curFrameLandmarksX;
     lastFrameLandmarksYSet=lastFrameLandmarksYSet+curFrameLandmarksY;
     lastFrameLandmarksVisSet=lastFrameLandmarksVisSet+curFrameLandmarksVis;
@@ -198,12 +201,16 @@ std::tuple<int,double> PoseAnomalyDetection::detectAnomaly(std::tuple<Eigen::Mat
       isLastFrameFirst=false;
       // std::cout<<"yes"<<std::endl;
       // std::cout<<lastFrameLandmarksXSet<<std::endl;
+      
     }
   }
   else{
+
+    std::cout<<"no!"<<std::endl;
+
     curFrameLandmarksXSet=curFrameLandmarksXSet+curFrameLandmarksX;
-    curFrameLandmarksYSet=curFrameLandmarksXSet+curFrameLandmarksY;
-    curFrameLandmarksVisSet=curFrameLandmarksXSet+curFrameLandmarksVis;
+    curFrameLandmarksYSet=curFrameLandmarksYSet+curFrameLandmarksY;
+    curFrameLandmarksVisSet=curFrameLandmarksVisSet+curFrameLandmarksVis;
 
     if (frameCount%oksCheckInterval==0){
       curFrameLandmarksXSet=curFrameLandmarksXSet/oksCheckInterval;
@@ -365,8 +372,13 @@ class LandmarkWriterCalculator : public Node {
   // }
 
   mediapipe::Status Open(CalculatorContext* cc) final {
+    // output_path = getenv("HOME");
+    // output_path+="youngwan/youngjun/mp_cplus/mediapipe/output/pose";
+    
+
     file_path = getenv("HOME");
-    file_path += "/pose_anomaly.csv";
+    file_path +="/pose_anomaly.csv";
+    // std::cout<<file_path<<std::endl;
     
     file.open(file_path);
     RET_CHECK(file);
@@ -402,26 +414,30 @@ class LandmarkWriterCalculator : public Node {
     double comparedValue=std::get<1>(info);
     std::string curState=std::get<2>(info);
 
-    if (frameCount%10==0){
-      std::cout<<"Framecount:"<<frameCount<<std::endl;
+    std::cout<<"Framecount:"<<frameCount<<std::endl;
+
+    if (frameCount%10==0 && frameCount>poseAnomalyDetection.oksCheckInterval){
       std::cout<<comparedValue<<","<<curState<<std::endl;
       file << frameCount << ',' << comparedValue << ',' << curState;
       file << ',';
       file << std::endl;
+
+      std::string home = getenv("HOME");
+      GnuplotPipe gp;
+      gp.sendLine("set datafile separator ','");
+      gp.sendLine("set terminal png");
+      gp.sendLine("set output '"+home+"/pose_anomaly_plot.png'");
+      gp.sendLine("set xlabel 'frames'");
+      gp.sendLine("set yrange [0:1]");
+      gp.sendLine("set ytics 0.1");
+      gp.sendLine("plot '"+file_path+"' using 'keypointssimilarity' with linespoint ls 1 pt 5");
+
     }
     
 
     // frame,keypointsimilarity,state
 
-    std::string home = getenv("HOME");
-    GnuplotPipe gp;
-    gp.sendLine("set datafile separator ','");
-    gp.sendLine("set terminal png");
-    gp.sendLine("set output '"+home+"/pose_anomaly_plot.png'");
-    gp.sendLine("set xlabel 'frames'");
-    gp.sendLine("set yrange [0:1]");
-    gp.sendLine("set ytics 0.1");
-    gp.sendLine("plot '"+file_path+"' using 'keypointssimilarity' with linespoint ls 1 pt 5");
+    
 
 
     // std::cout<<curState<<std::endl;
@@ -431,6 +447,7 @@ class LandmarkWriterCalculator : public Node {
   
  private:
   std::ofstream file;
+  std::string output_path;
   std::string file_path;
 };
 MEDIAPIPE_REGISTER_NODE(LandmarkWriterCalculator);
