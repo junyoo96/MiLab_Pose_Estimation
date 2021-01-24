@@ -66,8 +66,10 @@ class PoseAnomalyDetection{
     PoseAnomalyDetection(){
 
       confidenceThreshold=0.5;
-      standThresholdMax=0.5;
-      shakingSittingThresholdMax=0.8;
+      
+      //standThresholdMax :0.75 / detect : standing, shaking  
+      standThresholdMax=0.75;
+      // shakingSittingThresholdMax=0.8;
       
       isLastFrameFirst=true;
       frameCount=0;
@@ -98,48 +100,134 @@ class PoseAnomalyDetection{
       }
 
       sigmas=Eigen::MatrixXd(possibleKeypointsNum,1);
-      sigmas(0,0)=0.26;
-      sigmas(1,0)=0.25;
-      sigmas(2,0)=0.25;
-      sigmas(3,0)=0.25;
-      sigmas(4,0)=0.25;
-      sigmas(5,0)=0.25;
-      sigmas(6,0)=0.25;
+      // //################
+      // //#Normal Version#
+      // //################
+      // //upper body
+      // sigmas(0,0)=0.26; //nose
+
+      // sigmas(1,0)=0.25; //left_eye_inner
+      // sigmas(2,0)=0.25; //left_eye
+      // sigmas(3,0)=0.25; //left_eye_outer
+      // sigmas(4,0)=0.25; //right_eye_inner
+      // sigmas(5,0)=0.25; //right_eye
+      // sigmas(6,0)=0.25; //right_eye_outer
       
-      sigmas(7,0)=0.35;
-      sigmas(8,0)=0.35;
-      sigmas(9,0)=0.35;
-      sigmas(10,0)=0.35;
+      // sigmas(7,0)=0.35; //left_ear
+      // sigmas(8,0)=0.35; //right_ear
 
-      sigmas(11,0)=0.79;
-      sigmas(12,0)=0.79;
-      sigmas(13,0)=0.72;
-      sigmas(14,0)=0.72;
+      // sigmas(9,0)=0.35; //mouth_left
+      // sigmas(10,0)=0.35; //mouth_right
 
-      sigmas(15,0)=0.62;
-      sigmas(16,0)=0.62;
+      // sigmas(11,0)=0.79; //left_shoulder
+      // sigmas(12,0)=0.79; //right_shoulder
 
-      sigmas(17,0)=0.62;
-      sigmas(18,0)=0.62;
-      sigmas(19,0)=0.62;
-      sigmas(20,0)=0.62;
-      sigmas(21,0)=0.62;
-      sigmas(22,0)=0.62;
+      // sigmas(13,0)=0.72; //left_elbow
+      // sigmas(14,0)=0.72; //right_elbow
 
-      sigmas(23,0)=1.07;
-      sigmas(24,0)=1.07;
+      // sigmas(15,0)=0.62; //left_wrist
+      // sigmas(16,0)=0.62; //right_wrist
 
-      sigmas(25,0)=0.87;
-      sigmas(26,0)=0.87;
+      // sigmas(17,0)=0.62; //left_pinky
+      // sigmas(18,0)=0.62; //right_pinky
+      // sigmas(19,0)=0.62; //left_index
+      // sigmas(20,0)=0.62; //right_inddex
+      // sigmas(21,0)=0.62; //left_thumb
+      // sigmas(22,0)=0.62; //right_thumb
+ 
+      // //lower body
+      // sigmas(23,0)=1.07; //left_hip
+      // sigmas(24,0)=1.07; //right_hip
 
-      sigmas(27,0)=0.89;
-      sigmas(28,0)=0.89;
+      // sigmas(25,0)=0.87; //left_knee
+      // sigmas(26,0)=0.87; //right_knee
 
-      sigmas(29,0)=0.89;
-      sigmas(30,0)=0.89;
+      // sigmas(27,0)=0.89; //left_ankle
+      // sigmas(28,0)=0.89; //right_ankle
 
-      sigmas(31,0)=0.89;
-      sigmas(32,0)=0.89;
+      // sigmas(29,0)=0.89; //left_heel
+      // sigmas(30,0)=0.89; //right_heel
+
+      // sigmas(31,0)=0.89; //left_foot_index
+      // sigmas(32,0)=0.89; //right_foot_index
+
+      //################
+      //#Custom Version#
+      //################
+      //Sensitivity weight 
+      //0.1 :10  //x10 sensitivity
+      //0.5 : 2 //x2 sensitivity
+      //1 : 1 //standard
+      //2 : 0.5 
+      //10 :0.1
+      //upper body
+
+      // sigmas(0,0)=0.26; //nose
+      // sigmas(1,0)=0.25; //left_eye_inner
+      // sigmas(2,0)=0.25; //left_eye
+      // sigmas(3,0)=0.25; //left_eye_outer
+      // sigmas(4,0)=0.25; //right_eye_inner
+      // sigmas(5,0)=0.25; //right_eye
+      // sigmas(6,0)=0.25; //right_eye_outer
+      sigmas(0,0)=10; //nose
+      sigmas(1,0)=10; //left_eye_inner
+      sigmas(2,0)=10; //left_eye
+      sigmas(3,0)=10; //left_eye_outer
+      sigmas(4,0)=10; //right_eye_inner
+      sigmas(5,0)=10; //right_eye
+      sigmas(6,0)=10; //right_eye_outer
+      
+      // sigmas(7,0)=0.35; //left_ear
+      // sigmas(8,0)=0.35; //right_ear
+      sigmas(7,0)=10; //left_ear
+      sigmas(8,0)=10; //right_ear
+
+      // sigmas(9,0)=0.35; //mouth_left
+      // sigmas(10,0)=0.35; //mouth_right
+      sigmas(9,0)=10; //mouth_left
+      sigmas(10,0)=10; //mouth_right
+
+      sigmas(11,0)=0.79; //left_shoulder
+      sigmas(12,0)=0.79; //right_shoulder
+      // sigmas(11,0)=0.79; //left_shoulder
+      // sigmas(12,0)=0.79; //right_shoulder
+
+      sigmas(13,0)=0.72; //left_elbow
+      sigmas(14,0)=0.72; //right_elbow
+      
+      // sigmas(15,0)=0.62; //left_wrist
+      // sigmas(16,0)=0.62; //right_wrist
+      sigmas(15,0)=0.001; //left_wrist
+      sigmas(16,0)=0.001; //right_wrist
+      
+      // sigmas(17,0)=0.62; //left_pinky
+      // sigmas(18,0)=0.62; //right_pinky
+      // sigmas(19,0)=0.62; //left_index
+      // sigmas(20,0)=0.62; //right_inddex
+      // sigmas(21,0)=0.62; //left_thumb
+      // sigmas(22,0)=0.62; //right_thumb
+      sigmas(17,0)=0.0001; //left_pinky
+      sigmas(18,0)=0.0001; //right_pinky
+      sigmas(19,0)=0.0001; //left_index
+      sigmas(20,0)=0.0001; //right_inddex
+      sigmas(21,0)=0.0001; //left_thumb
+      sigmas(22,0)=0.0001; //right_thumb
+ 
+      //lower body
+      sigmas(23,0)=1.07; //left_hip
+      sigmas(24,0)=1.07; //right_hip
+
+      sigmas(25,0)=0.87; //left_knee
+      sigmas(26,0)=0.87; //right_knee
+
+      sigmas(27,0)=0.89; //left_ankle
+      sigmas(28,0)=0.89; //right_ankle
+
+      sigmas(29,0)=0.89; //left_heel
+      sigmas(30,0)=0.89; //right_heel
+
+      sigmas(31,0)=0.89; //left_foot_index
+      sigmas(32,0)=0.89; //right_foot_index
 
       sigmas=sigmas/10.0;
 
@@ -185,7 +273,6 @@ std::tuple<int,double> PoseAnomalyDetection::detectAnomaly(std::tuple<Eigen::Mat
   // std::cout<<image_width<<","<<image_height<<std::endl;
 
   if (isLastFrameFirst==true){
-    std::cout<<"first!"<<std::endl;
     lastFrameLandmarksXSet=lastFrameLandmarksXSet+curFrameLandmarksX;
     lastFrameLandmarksYSet=lastFrameLandmarksYSet+curFrameLandmarksY;
     lastFrameLandmarksVisSet=lastFrameLandmarksVisSet+curFrameLandmarksVis;
@@ -205,8 +292,6 @@ std::tuple<int,double> PoseAnomalyDetection::detectAnomaly(std::tuple<Eigen::Mat
     }
   }
   else{
-
-    std::cout<<"no!"<<std::endl;
 
     curFrameLandmarksXSet=curFrameLandmarksXSet+curFrameLandmarksX;
     curFrameLandmarksYSet=curFrameLandmarksYSet+curFrameLandmarksY;
@@ -265,16 +350,15 @@ std::tuple<Eigen::MatrixXd,Eigen::MatrixXd,Eigen::MatrixXd> PoseAnomalyDetection
 double PoseAnomalyDetection::computeOks(Eigen::MatrixXd lastFrameLandmarksXSet,Eigen::MatrixXd lastFrameLandmarksYSet,Eigen::MatrixXd lastFrameLandmarksVisSet,Eigen::MatrixXd curFrameLandmarksXSet, Eigen::MatrixXd curFrameLandmarksYSet,int image_width, int image_height){
   
   double ious=0;
-  //2로 곱하니까 0.2곱해서 20 곱해줌
+  
   Eigen::MatrixXd vars=sigmas*2;
-  // std::cout<<vars<<std::endl;
-  // std::cout<<"============"<<std::endl;
+
   for(int i=0; i<possibleKeypointsNum; ++i)
   {
     vars(i,0)=std::pow(vars(i,0),2);
   }
   
-  int k=possibleKeypointsNum;
+  // int k=possibleKeypointsNum;
 
   std::vector<int> visEnabledIdx;
 
@@ -300,7 +384,7 @@ double PoseAnomalyDetection::computeOks(Eigen::MatrixXd lastFrameLandmarksXSet,E
     // std::cout<<"nothing"<<std::endl;
   }
  
-  int lastFrameArea=image_width*image_height;
+  // int lastFrameArea=image_width*image_height;
 
   //calculate distance
   for(int i=0; i<possibleKeypointsNum; ++i)
@@ -316,6 +400,7 @@ double PoseAnomalyDetection::computeOks(Eigen::MatrixXd lastFrameLandmarksXSet,E
 
   for(int i=0; i<possibleKeypointsNum; ++i)
   {
+    //here
     e(i,0)=e(i,0)/vars(i,0);
   }
 
@@ -416,7 +501,7 @@ class LandmarkWriterCalculator : public Node {
 
     std::cout<<"Framecount:"<<frameCount<<std::endl;
 
-    if (frameCount%10==0 && frameCount>poseAnomalyDetection.oksCheckInterval){
+    if (frameCount%poseAnomalyDetection.oksCheckInterval==0 && frameCount>poseAnomalyDetection.oksCheckInterval){
       std::cout<<comparedValue<<","<<curState<<std::endl;
       file << frameCount << ',' << comparedValue << ',' << curState;
       file << ',';
