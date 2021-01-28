@@ -16,6 +16,9 @@
 #include </usr/include/eigen3/Eigen/Core>
 #include <cmath>
 
+#include <time.h> 
+#include <ctime>
+
 //GNUPlot
 // #include <gnuplot-iostream.h>
 
@@ -38,6 +41,8 @@ class PoseAnomalyDetection{
     //State variable
     bool isLastFrameFirst;
     int frameCount;
+
+    
     
 
     //
@@ -61,6 +66,7 @@ class PoseAnomalyDetection{
 
   public:
     int oksCheckInterval;
+    
 
   public:
     PoseAnomalyDetection(){
@@ -68,7 +74,7 @@ class PoseAnomalyDetection{
       confidenceThreshold=0.5;
       
       //standThresholdMax :0.75 / detect : standing, shaking  
-      standThresholdMax=0.75;
+      standThresholdMax=0.85;
       // shakingSittingThresholdMax=0.8;
       
       isLastFrameFirst=true;
@@ -100,6 +106,7 @@ class PoseAnomalyDetection{
       }
 
       sigmas=Eigen::MatrixXd(possibleKeypointsNum,1);
+      
       // //################
       // //#Normal Version#
       // //################
@@ -197,8 +204,8 @@ class PoseAnomalyDetection{
       
       // sigmas(15,0)=0.62; //left_wrist
       // sigmas(16,0)=0.62; //right_wrist
-      sigmas(15,0)=0.001; //left_wrist
-      sigmas(16,0)=0.001; //right_wrist
+      sigmas(15,0)=0.3; //left_wrist
+      sigmas(16,0)=0.3; //right_wrist
       
       // sigmas(17,0)=0.62; //left_pinky
       // sigmas(18,0)=0.62; //right_pinky
@@ -206,12 +213,12 @@ class PoseAnomalyDetection{
       // sigmas(20,0)=0.62; //right_inddex
       // sigmas(21,0)=0.62; //left_thumb
       // sigmas(22,0)=0.62; //right_thumb
-      sigmas(17,0)=0.0001; //left_pinky
-      sigmas(18,0)=0.0001; //right_pinky
-      sigmas(19,0)=0.0001; //left_index
-      sigmas(20,0)=0.0001; //right_inddex
-      sigmas(21,0)=0.0001; //left_thumb
-      sigmas(22,0)=0.0001; //right_thumb
+      sigmas(17,0)=0.3; //left_pinky
+      sigmas(18,0)=0.3; //right_pinky
+      sigmas(19,0)=0.3; //left_index
+      sigmas(20,0)=0.3; //right_inddex
+      sigmas(21,0)=0.3; //left_thumb
+      sigmas(22,0)=0.3; //right_thumb
  
       //lower body
       sigmas(23,0)=1.07; //left_hip
@@ -462,12 +469,18 @@ class LandmarkWriterCalculator : public Node {
     
 
     file_path = getenv("HOME");
-    file_path +="/pose_anomaly.csv";
+    file_path +="/pose_similarity.csv";
     // std::cout<<file_path<<std::endl;
+
+    file_path_anomaly=getenv("HOME");
+    file_path_anomaly+="/pose_anomaly.csv";
     
     file.open(file_path);
+    file_anomaly.open(file_path_anomaly);
     RET_CHECK(file);
+    RET_CHECK(file_anomaly);
     file<<"frame,keypointssimilarity,state"<<std::endl;
+    file_anomaly<<"intervals,state"<<std::endl;
     
     return mediapipe::OkStatus();
   }
@@ -481,6 +494,14 @@ class LandmarkWriterCalculator : public Node {
     int image_height;
     std::tie(image_width, image_height) = image_size;
 
+    frameCount++;
+
+    if(isWebcam){
+      if(frameCount==1){
+        startTime=clock();
+      }
+      curTime=clock();
+    }
     // std::cout<<image_width<<","<<image_height<<std::endl;
 
     // for (int i = 0; i < landmarks.landmark_size(); ++i) {
@@ -495,14 +516,14 @@ class LandmarkWriterCalculator : public Node {
     //detect anomaly 
     // PoseAnomalyDetection ad=PoseAnomalyDetection();
     std::tuple<int,double,std::string> info=poseAnomalyDetection.detectCurrentState(landmarks,image_width,image_height);
-    int frameCount=std::get<0>(info);
+    // int _=std::get<0>(info);
     double comparedValue=std::get<1>(info);
     std::string curState=std::get<2>(info);
 
-    std::cout<<"Framecount:"<<frameCount<<std::endl;
+    // std::cout<<"Framecount:"<<frameCount<<std::endl;
 
     if (frameCount%poseAnomalyDetection.oksCheckInterval==0 && frameCount>poseAnomalyDetection.oksCheckInterval){
-      std::cout<<comparedValue<<","<<curState<<std::endl;
+      // std::cout<<comparedValue<<","<<curState<<std::endl;
       file << frameCount << ',' << comparedValue << ',' << curState;
       file << ',';
       file << std::endl;
@@ -511,12 +532,90 @@ class LandmarkWriterCalculator : public Node {
       GnuplotPipe gp;
       gp.sendLine("set datafile separator ','");
       gp.sendLine("set terminal png");
-      gp.sendLine("set output '"+home+"/pose_anomaly_plot.png'");
+      gp.sendLine("set output '"+home+"/pose_similarity_plot.png'");
       gp.sendLine("set xlabel 'frames'");
       gp.sendLine("set yrange [0:1]");
       gp.sendLine("set ytics 0.1");
       gp.sendLine("plot '"+file_path+"' using 'keypointssimilarity' with linespoint ls 1 pt 5");
+      
+      frameSetCurState=curState;
 
+    }
+
+    
+    if (frameSetCurState=="Anomaly"){
+      isAnomaly=true;
+    }
+
+    // std::cout<<"curstate:"<<frameSetCurState<<std::endl;
+
+    
+    if(frameCount>poseAnomalyDetection.oksCheckInterval){
+      
+      if (isWebcam){
+        double intervalTime=(double)((curTime-startTime)/CLOCKS_PER_SEC);
+      // std::cout<<startTime<<"//"<<curTime<<"//"<<intervalTime<<"//"<<CLOCKS_PER_SEC<<std::endl;
+      // std::cout<<intervalTime<<curTime<<poseAnomalyDetection.startTime;
+        if(intervalTime>=1){
+          secondCount++;
+          std::string curSecondState="Normal";
+          int curSecondStateIdx=0;
+          startTime=curTime;
+          if(isAnomaly==true){
+            curSecondState="Anomaly";
+            curSecondStateIdx=1;
+            isAnomaly=false;
+          }
+
+          std::cout<<secondCount<<","<<curSecondState<<std::endl;
+          file_anomaly << secondCount << ',' << curSecondStateIdx;
+          file_anomaly << ',';
+          file_anomaly << std::endl;
+
+          std::string home = getenv("HOME");
+          GnuplotPipe gp;
+          gp.sendLine("set datafile separator ','");
+          gp.sendLine("set terminal png");
+          gp.sendLine("set output '"+home+"/pose_anomaly_plot.png'");
+          gp.sendLine("set xlabel 'intervals'");
+          // gp.sendLine("set xrange [0:30]");
+          // gp.sendLine("set xtics 1");
+          
+          gp.sendLine("set yrange [0:1]");
+          gp.sendLine("set ytics 0.1");
+          gp.sendLine("plot '"+file_path_anomaly+"' using 'state' with linespoint ls 1 pt 5");
+        }
+      }
+      else{
+        
+        if(frameCount%inputVideoFrame==0){
+          std::string curFrameState="Normal";
+          int curFrameStateIdx=0;
+          if(isAnomaly==true){
+            curFrameState="Anomaly";
+            curFrameStateIdx=1;
+            isAnomaly=false;
+          }
+          
+          file_anomaly << frameCount << ',' << curFrameStateIdx;
+          file_anomaly << ',';
+          file_anomaly << std::endl;
+
+          std::string home = getenv("HOME");
+          GnuplotPipe gp;
+          gp.sendLine("set datafile separator ','");
+          gp.sendLine("set terminal png");
+          gp.sendLine("set output '"+home+"/pose_anomaly_plot.png'");
+          gp.sendLine("set xlabel 'intervals'");
+          // gp.sendLine("set xrange [0:30]");
+          // gp.sendLine("set xtics 1");
+          
+          gp.sendLine("set yrange [0:1]");
+          gp.sendLine("set ytics 0.1");
+          gp.sendLine("plot '"+file_path_anomaly+"' using 'state' with linespoint ls 1 pt 5");
+        }
+      }
+      
     }
     
 
@@ -532,8 +631,21 @@ class LandmarkWriterCalculator : public Node {
   
  private:
   std::ofstream file;
-  std::string output_path;
+  std::ofstream file_anomaly;
+  // std::string output_path;
   std::string file_path;
+  std::string file_path_anomaly;
+  clock_t startTime;
+  clock_t curTime;
+  // double secCount;
+  int frameCount=0;
+  int secondCount=0;
+  std::string frameSetCurState;
+  //check video from webcam for 1second decision
+  bool isWebcam=false;
+  int inputVideoFrame=15;
+  bool isAnomaly=false;
+
 };
 MEDIAPIPE_REGISTER_NODE(LandmarkWriterCalculator);
 
