@@ -19,12 +19,59 @@
 #include <time.h> 
 #include <ctime>
 
+//vector angle
+#define  PI 3.141592
+#define  RADIAN ( PI / 180.0 )
+#define  DEGREE ( 180.0 / PI )
+#define  RAD2DEG(Rad)  ( Rad * DEGREE )
+
 //GNUPlot
 // #include <gnuplot-iostream.h>
 
 // #include </usr/include/eigen3/unsupported/Eigen/MatrixFunctions>
 // using std::sqrt; 
 // using namespace Eigen;
+
+//Blazepose Keypoint Enum
+enum BlazePoseKeypointsIdx
+{
+  //FACE
+  NOSE, //0
+  LEFT_EYE_INNER,
+  LEFT_EYE,
+  LEFT_EYE_OUTER,
+  RIGHT_EYE_INNER,
+  RIGHT_EYE,
+  RIGHT_EYE_OUTER,
+  LEFT_EAR,
+  RIGHT_EAR,
+  MOUTH_LEFT,
+  MOUTH_RIGHT, //10
+  //UPPER BODY
+  LEFT_SHOULDER, //11
+  RIGHT_SHOULDER,
+  LEFT_ELBOW,
+  RIGHT_ELBOW,
+  LEFT_WRIST,
+  RIGHT_WRIST,
+  LEFT_PINKY,
+  RIGHT_PINKY,
+  LEFT_INDEX,
+  RIGHT_INDEX,
+  LEFT_THUMB,
+  RIGHT_THUMB, //22
+  //LOWER BODY
+  LEFT_HIP, //23
+  RIGHT_HIP,
+  LEFT_KNEE,
+  RIGHT_KNEE,
+  LEFT_ANKLE,
+  RIGHT_ANKLE,//28
+  LEFT_HEEL,
+  RIGHT_HEEL, 
+  LEFT_FOOT_INDEX,
+  RIGHT_FOOT_INDEX //32
+};
 
 //anomaly detect 하는 class
 class PoseAnomalyDetection{
@@ -41,9 +88,6 @@ class PoseAnomalyDetection{
     //State variable
     bool isLastFrameFirst;
     int frameCount;
-
-    
-    
 
     //
     int possibleKeypointsNum;
@@ -244,7 +288,7 @@ class PoseAnomalyDetection{
     std::tuple<int,double> detectAnomaly(std::tuple<Eigen::MatrixXd,Eigen::MatrixXd,Eigen::MatrixXd>&,int image_width,int image_height);
     std::tuple<Eigen::MatrixXd,Eigen::MatrixXd,Eigen::MatrixXd> convertLandmarks(const mediapipe::NormalizedLandmarkList& landmarks);
     double computeOks(Eigen::MatrixXd lastFrameLandmarksXSet,Eigen::MatrixXd lastFrameLandmarksYSet,Eigen::MatrixXd lastFrameLandmarksVisSet,Eigen::MatrixXd curFrameLandmarksXSet, Eigen::MatrixXd curFrameLandmarksYSet,int image_width, int image_height);
-
+    std::string judgeAnomalyActionType(std::tuple<Eigen::MatrixXd,Eigen::MatrixXd,Eigen::MatrixXd>& convertedLandmarks);
 };
 
 
@@ -263,8 +307,12 @@ std::tuple<int,double,std::string> PoseAnomalyDetection::detectCurrentState(cons
 
     if (comparedValueInfo<standThresholdMax){
       curState="Anomaly";
+
+      judgeAnomalyActionType(convertedLandmarks);
     }
 
+    //check whether sit and stand
+    
     return std::make_tuple(frameCount,comparedValueInfo,curState);
 
 }
@@ -333,8 +381,6 @@ std::tuple<int,double> PoseAnomalyDetection::detectAnomaly(std::tuple<Eigen::Mat
     
   }
     
-  
-  
 }
 
 std::tuple<Eigen::MatrixXd,Eigen::MatrixXd,Eigen::MatrixXd> PoseAnomalyDetection::convertLandmarks(const mediapipe::NormalizedLandmarkList& landmarks){
@@ -429,6 +475,46 @@ double PoseAnomalyDetection::computeOks(Eigen::MatrixXd lastFrameLandmarksXSet,E
   return ious;
 }
 
+std::string PoseAnomalyDetection::judgeAnomalyActionType(std::tuple<Eigen::MatrixXd,Eigen::MatrixXd,Eigen::MatrixXd>& landmarks){
+  
+  std::string actionType="";
+
+  Eigen::MatrixXd curFrameLandmarksX=std::get<0>(landmarks);
+  Eigen::MatrixXd curFrameLandmarksY=std::get<1>(landmarks);
+  Eigen::MatrixXd curFrameLandmarksVis=std::get<2>(landmarks);
+
+  double left_knee_x=curFrameLandmarksX(LEFT_KNEE,0);
+  double left_knee_y=curFrameLandmarksY(LEFT_KNEE,0);
+  double left_hip_x=curFrameLandmarksX(LEFT_HIP,0);
+  double left_hip_y=curFrameLandmarksY(LEFT_HIP,0);
+  double left_ankle_x=curFrameLandmarksX(LEFT_ANKLE,0);
+  double left_ankle_y=curFrameLandmarksY(LEFT_ANKLE,0);
+
+  double left_hip_left_knee_vector_x=left_knee_x-left_hip_x;
+  double left_hip_left_knee_vector_y=left_knee_y-left_hip_y;
+  double left_knee_left_ankle_vector_x=left_ankle_x-left_knee_x;
+  double left_knee_left_ankle_vector_y=left_ankle_y-left_knee_y;
+  
+  double dot_product= left_hip_left_knee_vector_x*left_knee_left_ankle_vector_x + left_hip_left_knee_vector_y*left_knee_left_ankle_vector_y;
+  double left_hip_left_knee_vector_x_norm=std::sqrt(std::pow(left_hip_left_knee_vector_x,2)+std::pow(left_hip_left_knee_vector_y,2));
+  double left_knee_left_ankle_vector_y_norm=std::sqrt(std::pow(left_knee_left_ankle_vector_x,2)+std::pow(left_knee_left_ankle_vector_y,2));
+  double rad=std::acos(dot_product/(left_hip_left_knee_vector_x_norm*left_knee_left_ankle_vector_y_norm));
+  double angle=180-RAD2DEG(rad);
+  
+  // std::cout<<angle<<std::endl;
+  if (angle<120){
+    std::cout<<"s"<<std::endl;
+  }
+  else{
+    std::cout<<"standdddddddddddddddddddddddddddd"<<std::endl;
+  }
+    
+
+  
+
+  return actionType;
+}
+
 
 //==============================================================================================
 
@@ -467,6 +553,7 @@ class LandmarkWriterCalculator : public Node {
     // output_path = getenv("HOME");
     // output_path+="youngwan/youngjun/mp_cplus/mediapipe/output/pose";
     
+    std::cout<<"gogo!";
 
     file_path = getenv("HOME");
     file_path +="/pose_similarity.csv";
@@ -529,14 +616,14 @@ class LandmarkWriterCalculator : public Node {
       file << std::endl;
 
       std::string home = getenv("HOME");
-      GnuplotPipe gp;
-      gp.sendLine("set datafile separator ','");
-      gp.sendLine("set terminal png");
-      gp.sendLine("set output '"+home+"/pose_similarity_plot.png'");
-      gp.sendLine("set xlabel 'frames'");
-      gp.sendLine("set yrange [0:1]");
-      gp.sendLine("set ytics 0.1");
-      gp.sendLine("plot '"+file_path+"' using 'keypointssimilarity' with linespoint ls 1 pt 5");
+      // GnuplotPipe gp;
+      // gp.sendLine("set datafile separator ','");
+      // gp.sendLine("set terminal png");
+      // gp.sendLine("set output '"+home+"/pose_similarity_plot.png'");
+      // gp.sendLine("set xlabel 'frames'");
+      // gp.sendLine("set yrange [0:1]");
+      // gp.sendLine("set ytics 0.1");
+      // gp.sendLine("plot '"+file_path+"' using 'keypointssimilarity' with linespoint ls 1 pt 5");
       
       frameSetCurState=curState;
 
@@ -573,17 +660,16 @@ class LandmarkWriterCalculator : public Node {
           file_anomaly << std::endl;
 
           std::string home = getenv("HOME");
-          GnuplotPipe gp;
-          gp.sendLine("set datafile separator ','");
-          gp.sendLine("set terminal png");
-          gp.sendLine("set output '"+home+"/pose_anomaly_plot.png'");
-          gp.sendLine("set xlabel 'intervals'");
-          // gp.sendLine("set xrange [0:30]");
-          // gp.sendLine("set xtics 1");
+          // GnuplotPipe gp;
+          // gp.sendLine("set datafile separator ','");
+          // gp.sendLine("set terminal png");
+          // gp.sendLine("set output '"+home+"/pose_anomaly_plot.png'");
+          // gp.sendLine("set xlabel 'intervals'");
           
-          gp.sendLine("set yrange [0:1]");
-          gp.sendLine("set ytics 0.1");
-          gp.sendLine("plot '"+file_path_anomaly+"' using 'state' with linespoint ls 1 pt 5");
+          
+          // gp.sendLine("set yrange [0:1]");
+          // gp.sendLine("set ytics 0.1");
+          // gp.sendLine("plot '"+file_path_anomaly+"' using 'state' with linespoint ls 1 pt 5");
         }
       }
       else{
@@ -602,17 +688,15 @@ class LandmarkWriterCalculator : public Node {
           file_anomaly << std::endl;
 
           std::string home = getenv("HOME");
-          GnuplotPipe gp;
-          gp.sendLine("set datafile separator ','");
-          gp.sendLine("set terminal png");
-          gp.sendLine("set output '"+home+"/pose_anomaly_plot.png'");
-          gp.sendLine("set xlabel 'intervals'");
-          // gp.sendLine("set xrange [0:30]");
-          // gp.sendLine("set xtics 1");
+          // GnuplotPipe gp;
+          // gp.sendLine("set datafile separator ','");
+          // gp.sendLine("set terminal png");
+          // gp.sendLine("set output '"+home+"/pose_anomaly_plot.png'");
+          // gp.sendLine("set xlabel 'intervals'");
           
-          gp.sendLine("set yrange [0:1]");
-          gp.sendLine("set ytics 0.1");
-          gp.sendLine("plot '"+file_path_anomaly+"' using 'state' with linespoint ls 1 pt 5");
+          // gp.sendLine("set yrange [0:1]");
+          // gp.sendLine("set ytics 0.1");
+          // gp.sendLine("plot '"+file_path_anomaly+"' using 'state' with linespoint ls 1 pt 5");
         }
       }
       
