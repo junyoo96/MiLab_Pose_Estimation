@@ -6,6 +6,7 @@
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/port/ret_check.h"
 #include "mediapipe/framework/formats/landmark.pb.h"
+// #include "mediapipe/framework/formats/detection.pb.h"
 
 //string
 #include <string>
@@ -18,6 +19,13 @@
 
 #include <time.h> 
 #include <ctime>
+
+#include <typeinfo>
+
+//###############
+
+
+//################
 
 //vector angle
 #define  PI 3.141592
@@ -284,7 +292,7 @@ class PoseAnomalyDetection{
 
     }
   
-    std::tuple<int,double,std::string> detectCurrentState(const mediapipe::NormalizedLandmarkList& landmarks,int image_width,int image_height);
+    std::tuple<int,double,std::string,std::string> detectCurrentState(const mediapipe::NormalizedLandmarkList& landmarks,int image_width,int image_height);
     std::tuple<int,double> detectAnomaly(std::tuple<Eigen::MatrixXd,Eigen::MatrixXd,Eigen::MatrixXd>&,int image_width,int image_height);
     std::tuple<Eigen::MatrixXd,Eigen::MatrixXd,Eigen::MatrixXd> convertLandmarks(const mediapipe::NormalizedLandmarkList& landmarks);
     double computeOks(Eigen::MatrixXd lastFrameLandmarksXSet,Eigen::MatrixXd lastFrameLandmarksYSet,Eigen::MatrixXd lastFrameLandmarksVisSet,Eigen::MatrixXd curFrameLandmarksXSet, Eigen::MatrixXd curFrameLandmarksYSet,int image_width, int image_height);
@@ -292,7 +300,7 @@ class PoseAnomalyDetection{
 };
 
 
-std::tuple<int,double,std::string> PoseAnomalyDetection::detectCurrentState(const mediapipe::NormalizedLandmarkList& landmarks,int image_width,int image_height){
+std::tuple<int,double,std::string,std::string> PoseAnomalyDetection::detectCurrentState(const mediapipe::NormalizedLandmarkList& landmarks,int image_width,int image_height){
     
     frameCount++;
     // std::cout<<"frame count: "<<frameCount<<std::endl;
@@ -304,16 +312,17 @@ std::tuple<int,double,std::string> PoseAnomalyDetection::detectCurrentState(cons
     double comparedValueInfo=std::get<1>(info);
 
     std::string curState="Normal";
+    std::string curActionType="Sit";
 
     if (comparedValueInfo<standThresholdMax){
       curState="Anomaly";
 
-      judgeAnomalyActionType(convertedLandmarks);
+      curActionType=judgeAnomalyActionType(convertedLandmarks);
     }
 
     //check whether sit and stand
     
-    return std::make_tuple(frameCount,comparedValueInfo,curState);
+    return std::make_tuple(frameCount,comparedValueInfo,curState,curActionType);
 
 }
 
@@ -503,15 +512,12 @@ std::string PoseAnomalyDetection::judgeAnomalyActionType(std::tuple<Eigen::Matri
   
   // std::cout<<angle<<std::endl;
   if (angle<120){
-    std::cout<<"s"<<std::endl;
+    actionType="Sit";
   }
   else{
-    std::cout<<"standdddddddddddddddddddddddddddd"<<std::endl;
+    actionType="Stand";
   }
     
-
-  
-
   return actionType;
 }
 
@@ -523,16 +529,20 @@ std::string PoseAnomalyDetection::judgeAnomalyActionType(std::tuple<Eigen::Matri
 namespace mediapipe {
 
 namespace api2 {
+
+// constexpr char kDetectionTag[] = "DETECTION";
+
 class LandmarkWriterCalculator : public Node {
  public:
   //Landmark
   static constexpr Input<mediapipe::NormalizedLandmarkList> kInLandmarks{"NORM_LANDMARKS"};
   static constexpr Input<std::pair<int, int>> kImageSize{"IMAGE_SIZE"};
+  // static constexpr Input<Detection> kDetection{"DETECTION"};
   static constexpr Output<int>::Optional kOutUnused{"INT"};
 
   PoseAnomalyDetection poseAnomalyDetection;
 
-  MEDIAPIPE_NODE_INTERFACE(LandmarkWriterCalculator, kInLandmarks, kImageSize,kOutUnused);
+  MEDIAPIPE_NODE_INTERFACE(LandmarkWriterCalculator, kInLandmarks, kImageSize);
 
   static mediapipe::Status UpdateContract(CalculatorContract* cc) {
     
@@ -553,7 +563,7 @@ class LandmarkWriterCalculator : public Node {
     // output_path = getenv("HOME");
     // output_path+="youngwan/youngjun/mp_cplus/mediapipe/output/pose";
     
-    std::cout<<"gogo!";
+    std::cout<<"gogo!"<<std::endl;
 
     file_path = getenv("HOME");
     file_path +="/pose_similarity.csv";
@@ -568,147 +578,158 @@ class LandmarkWriterCalculator : public Node {
     RET_CHECK(file_anomaly);
     file<<"frame,keypointssimilarity,state"<<std::endl;
     file_anomaly<<"intervals,state"<<std::endl;
-    
+
     return mediapipe::OkStatus();
   }
 
   mediapipe::Status Process(CalculatorContext* cc) final {
-    const mediapipe::NormalizedLandmarkList& landmarks = *kInLandmarks(cc);
-    const std::pair<int, int>& image_size= *kImageSize(cc);
-
-    // const auto& image = cc->Inputs().Tag(kImageFrameTag).Get<ImageFrame>();
-    int image_width;
-    int image_height;
-    std::tie(image_width, image_height) = image_size;
 
     frameCount++;
 
-    if(isWebcam){
-      if(frameCount==1){
-        startTime=clock();
-      }
-      curTime=clock();
+    bool isFaceExist=true;
+
+    //얼굴없으면 keypoints 추출 안되기 때문에 그동안 모듈의 작업 수행 안되게 하기
+    if(kInLandmarks(cc).IsEmpty()){
+      isFaceExist=false;   
     }
-    // std::cout<<image_width<<","<<image_height<<std::endl;
-
-    // for (int i = 0; i < landmarks.landmark_size(); ++i) {
-    //   const mediapipe::NormalizedLandmark& landmark = landmarks.landmark(i);
-    //   std::cout << landmark.x() << ',' << landmark.y() << ',' << landmark.visibility()<<std::endl;
-    //   if (i < landmarks.landmark_size() - 1) {
-    //     file << ',';
-    //   }
-    // }
-    // file << std::endl;
-
-    //detect anomaly 
-    // PoseAnomalyDetection ad=PoseAnomalyDetection();
-    std::tuple<int,double,std::string> info=poseAnomalyDetection.detectCurrentState(landmarks,image_width,image_height);
-    // int _=std::get<0>(info);
-    double comparedValue=std::get<1>(info);
-    std::string curState=std::get<2>(info);
-
-    // std::cout<<"Framecount:"<<frameCount<<std::endl;
-
-    if (frameCount%poseAnomalyDetection.oksCheckInterval==0 && frameCount>poseAnomalyDetection.oksCheckInterval){
-      // std::cout<<comparedValue<<","<<curState<<std::endl;
-      file << frameCount << ',' << comparedValue << ',' << curState;
-      file << ',';
-      file << std::endl;
-
-      std::string home = getenv("HOME");
-      // GnuplotPipe gp;
-      // gp.sendLine("set datafile separator ','");
-      // gp.sendLine("set terminal png");
-      // gp.sendLine("set output '"+home+"/pose_similarity_plot.png'");
-      // gp.sendLine("set xlabel 'frames'");
-      // gp.sendLine("set yrange [0:1]");
-      // gp.sendLine("set ytics 0.1");
-      // gp.sendLine("plot '"+file_path+"' using 'keypointssimilarity' with linespoint ls 1 pt 5");
-      
-      frameSetCurState=curState;
-
-    }
-
     
-    if (frameSetCurState=="Anomaly"){
-      isAnomaly=true;
-    }
+    //얼굴이 존재할 때만 anomaly detection 수행 
+    if(isFaceExist==true)
+    {
+      // std::cout<<"Face exists"<<std::endl;
+      const mediapipe::NormalizedLandmarkList& landmarks = *kInLandmarks(cc);
+  
+      const std::pair<int, int>& image_size= *kImageSize(cc);
 
-    // std::cout<<"curstate:"<<frameSetCurState<<std::endl;
+      int image_width;
+      int image_height;
+      std::tie(image_width, image_height) = image_size;
 
-    
-    if(frameCount>poseAnomalyDetection.oksCheckInterval){
-      
-      if (isWebcam){
-        double intervalTime=(double)((curTime-startTime)/CLOCKS_PER_SEC);
-      // std::cout<<startTime<<"//"<<curTime<<"//"<<intervalTime<<"//"<<CLOCKS_PER_SEC<<std::endl;
-      // std::cout<<intervalTime<<curTime<<poseAnomalyDetection.startTime;
-        if(intervalTime>=1){
-          secondCount++;
-          std::string curSecondState="Normal";
-          int curSecondStateIdx=0;
-          startTime=curTime;
-          if(isAnomaly==true){
-            curSecondState="Anomaly";
-            curSecondStateIdx=1;
-            isAnomaly=false;
-          }
-
-          std::cout<<secondCount<<","<<curSecondState<<std::endl;
-          file_anomaly << secondCount << ',' << curSecondStateIdx;
-          file_anomaly << ',';
-          file_anomaly << std::endl;
-
-          std::string home = getenv("HOME");
-          // GnuplotPipe gp;
-          // gp.sendLine("set datafile separator ','");
-          // gp.sendLine("set terminal png");
-          // gp.sendLine("set output '"+home+"/pose_anomaly_plot.png'");
-          // gp.sendLine("set xlabel 'intervals'");
-          
-          
-          // gp.sendLine("set yrange [0:1]");
-          // gp.sendLine("set ytics 0.1");
-          // gp.sendLine("plot '"+file_path_anomaly+"' using 'state' with linespoint ls 1 pt 5");
+      if(isWebcam){
+        if(frameCount==1){
+          startTime=clock();
         }
+        curTime=clock();
       }
-      else{
+      // std::cout<<image_width<<","<<image_height<<std::endl;
+
+      // for (int i = 0; i < landmarks.landmark_size(); ++i) {
+      //   const mediapipe::NormalizedLandmark& landmark = landmarks.landmark(i);
+      //   std::cout << landmark.x() << ',' << landmark.y() << ',' << landmark.visibility()<<std::endl;
+      //   if (i < landmarks.landmark_size() - 1) {
+      //     file << ',';
+      //   }
+      // }
+      // file << std::endl;
+
+      //detect anomaly 
+      // PoseAnomalyDetection ad=PoseAnomalyDetection();
+      std::tuple<int,double,std::string,std::string> info=poseAnomalyDetection.detectCurrentState(landmarks,image_width,image_height);
+      double comparedValue=std::get<1>(info);
+      std::string curState=std::get<2>(info);
+      std::string curActionType=std::get<3>(info);
+
+      //10프레임마다 유사도 csv에 저장하고 plot하는 코드 
+      if (frameCount%poseAnomalyDetection.oksCheckInterval==0 && frameCount>poseAnomalyDetection.oksCheckInterval){
+        file << frameCount << ',' << comparedValue << ',' << curState;
+        file << ',';
+        file << std::endl;
+
+        std::string home = getenv("HOME");
+        // GnuplotPipe gp;
+        // gp.sendLine("set datafile separator ','");
+        // gp.sendLine("set terminal png");
+        // gp.sendLine("set output '"+home+"/pose_similarity_plot.png'");
+        // gp.sendLine("set xlabel 'frames'");
+        // gp.sendLine("set yrange [0:1]");
+        // gp.sendLine("set ytics 0.1");
+        // gp.sendLine("plot '"+file_path+"' using 'keypointssimilarity' with linespoint ls 1 pt 5");
         
-        if(frameCount%inputVideoFrame==0){
-          std::string curFrameState="Normal";
-          int curFrameStateIdx=0;
-          if(isAnomaly==true){
-            curFrameState="Anomaly";
-            curFrameStateIdx=1;
-            isAnomaly=false;
-          }
-          
-          file_anomaly << frameCount << ',' << curFrameStateIdx;
-          file_anomaly << ',';
-          file_anomaly << std::endl;
+        frameSetCurState=curState;
 
-          std::string home = getenv("HOME");
-          // GnuplotPipe gp;
-          // gp.sendLine("set datafile separator ','");
-          // gp.sendLine("set terminal png");
-          // gp.sendLine("set output '"+home+"/pose_anomaly_plot.png'");
-          // gp.sendLine("set xlabel 'intervals'");
-          
-          // gp.sendLine("set yrange [0:1]");
-          // gp.sendLine("set ytics 0.1");
-          // gp.sendLine("plot '"+file_path_anomaly+"' using 'state' with linespoint ls 1 pt 5");
-        }
       }
       
+      if (frameSetCurState=="Anomaly"){
+        isAnomaly=true;
+      }
+
+      //
+      if(frameCount>poseAnomalyDetection.oksCheckInterval){
+        
+        if (isWebcam){
+          double intervalTime=(double)((curTime-startTime)/CLOCKS_PER_SEC);
+        // std::cout<<startTime<<"//"<<curTime<<"//"<<intervalTime<<"//"<<CLOCKS_PER_SEC<<std::endl;
+        // std::cout<<intervalTime<<curTime<<poseAnomalyDetection.startTime;
+          if(intervalTime>=1){
+            secondCount++;
+            std::string curSecondState="Normal";
+            int curSecondStateIdx=0;
+            startTime=curTime;
+            if(isAnomaly==true){
+              curSecondState="Anomaly";
+              curSecondStateIdx=1;
+              isAnomaly=false;
+            }
+
+            //최종판단 :실시간 영상에서 actiontype과 anomaly 최종 판단하는 곳 
+            std::cout<<secondCount<<","<<curSecondState<<","<<curActionType<<std::endl;
+            std::cout<<curActionType<<std::endl;
+            file_anomaly << secondCount << ',' << curSecondStateIdx;
+            file_anomaly << ',';
+            file_anomaly << std::endl;
+
+            std::string home = getenv("HOME");
+            // GnuplotPipe gp;
+            // gp.sendLine("set datafile separator ','");
+            // gp.sendLine("set terminal png");
+            // gp.sendLine("set output '"+home+"/pose_anomaly_plot.png'");
+            // gp.sendLine("set xlabel 'intervals'");
+            
+            
+            // gp.sendLine("set yrange [0:1]");
+            // gp.sendLine("set ytics 0.1");
+            // gp.sendLine("plot '"+file_path_anomaly+"' using 'state' with linespoint ls 1 pt 5");
+          }
+        }
+        else{
+          
+          if(frameCount%inputVideoFrame==0){
+            std::string curFrameState="Normal";
+            int curFrameStateIdx=0;
+            if(isAnomaly==true){
+              curFrameState="Anomaly";
+              curFrameStateIdx=1;
+              isAnomaly=false;
+            }
+            
+            file_anomaly << frameCount << ',' << curFrameStateIdx;
+            file_anomaly << ',';
+            file_anomaly << std::endl;
+
+            std::string home = getenv("HOME");
+            // GnuplotPipe gp;
+            // gp.sendLine("set datafile separator ','");
+            // gp.sendLine("set terminal png");
+            // gp.sendLine("set output '"+home+"/pose_anomaly_plot.png'");
+            // gp.sendLine("set xlabel 'intervals'");
+            
+            // gp.sendLine("set yrange [0:1]");
+            // gp.sendLine("set ytics 0.1");
+            // gp.sendLine("plot '"+file_path_anomaly+"' using 'state' with linespoint ls 1 pt 5");
+          }
+        }
+        
+      }
+    }
+    else
+    {
+      std::cout<<"No face / No person"<<std::endl;
     }
     
-
-    // frame,keypointsimilarity,state
-
+    
     
 
-
-    // std::cout<<curState<<std::endl;
+    
 
     return mediapipe::OkStatus();
   }
@@ -726,7 +747,7 @@ class LandmarkWriterCalculator : public Node {
   int secondCount=0;
   std::string frameSetCurState;
   //check video from webcam for 1second decision
-  bool isWebcam=false;
+  bool isWebcam=true;
   int inputVideoFrame=15;
   bool isAnomaly=false;
 
