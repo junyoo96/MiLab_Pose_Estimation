@@ -492,12 +492,22 @@ std::string PoseAnomalyDetection::judgeAnomalyActionType(std::tuple<Eigen::Matri
   Eigen::MatrixXd curFrameLandmarksY=std::get<1>(landmarks);
   Eigen::MatrixXd curFrameLandmarksVis=std::get<2>(landmarks);
 
-  double left_knee_x=curFrameLandmarksX(LEFT_KNEE,0);
-  double left_knee_y=curFrameLandmarksY(LEFT_KNEE,0);
-  double left_hip_x=curFrameLandmarksX(LEFT_HIP,0);
-  double left_hip_y=curFrameLandmarksY(LEFT_HIP,0);
-  double left_ankle_x=curFrameLandmarksX(LEFT_ANKLE,0);
-  double left_ankle_y=curFrameLandmarksY(LEFT_ANKLE,0);
+
+  //check shoulder-hip-knee angle 
+  double left_knee_x=curFrameLandmarksX(LEFT_HIP,0);
+  double left_knee_y=curFrameLandmarksY(LEFT_HIP,0);
+  double left_hip_x=curFrameLandmarksX(LEFT_SHOULDER,0);
+  double left_hip_y=curFrameLandmarksY(LEFT_SHOULDER,0);
+  double left_ankle_x=curFrameLandmarksX(LEFT_KNEE,0);
+  double left_ankle_y=curFrameLandmarksY(LEFT_KNEE,0);
+  
+  // //check hip-knee-ankle angle 
+  // double left_knee_x=curFrameLandmarksX(LEFT_KNEE,0);
+  // double left_knee_y=curFrameLandmarksY(LEFT_KNEE,0);
+  // double left_hip_x=curFrameLandmarksX(LEFT_HIP,0);
+  // double left_hip_y=curFrameLandmarksY(LEFT_HIP,0);
+  // double left_ankle_x=curFrameLandmarksX(LEFT_ANKLE,0);
+  // double left_ankle_y=curFrameLandmarksY(LEFT_ANKLE,0);
 
   double left_hip_left_knee_vector_x=left_knee_x-left_hip_x;
   double left_hip_left_knee_vector_y=left_knee_y-left_hip_y;
@@ -511,7 +521,7 @@ std::string PoseAnomalyDetection::judgeAnomalyActionType(std::tuple<Eigen::Matri
   double angle=180-RAD2DEG(rad);
   
   // std::cout<<angle<<std::endl;
-  if (angle<120){
+  if (angle<130){
     actionType="Sit";
   }
   else{
@@ -528,6 +538,10 @@ std::string PoseAnomalyDetection::judgeAnomalyActionType(std::tuple<Eigen::Matri
 //MediaPipe code
 namespace mediapipe {
 
+namespace{
+constexpr char kOutPoseStateTag[] = "POSE_STATE";
+}
+
 namespace api2 {
 
 // constexpr char kDetectionTag[] = "DETECTION";
@@ -537,12 +551,14 @@ class LandmarkWriterCalculator : public Node {
   //Landmark
   static constexpr Input<mediapipe::NormalizedLandmarkList> kInLandmarks{"NORM_LANDMARKS"};
   static constexpr Input<std::pair<int, int>> kImageSize{"IMAGE_SIZE"};
-  // static constexpr Input<Detection> kDetection{"DETECTION"};
-  static constexpr Output<int>::Optional kOutUnused{"INT"};
+  static constexpr Input<std::tuple<int,int>> kDetectionCounts{"DETECTIONS_COUNTS"};
+  
+  static constexpr Output<std::tuple<std::string,std::string>> kOutPoseState{kOutPoseStateTag};
+  // static constexpr Output<std::tuple<std::string,std::string>>::Optional kOut{kOutPoseStateTag};
 
   PoseAnomalyDetection poseAnomalyDetection;
 
-  MEDIAPIPE_NODE_INTERFACE(LandmarkWriterCalculator, kInLandmarks, kImageSize);
+  MEDIAPIPE_NODE_INTERFACE(LandmarkWriterCalculator, kInLandmarks, kImageSize, kDetectionCounts,kOutPoseState);
 
   static mediapipe::Status UpdateContract(CalculatorContract* cc) {
     
@@ -584,7 +600,20 @@ class LandmarkWriterCalculator : public Node {
 
   mediapipe::Status Process(CalculatorContext* cc) final {
 
+    mediapipe::Timestamp curTime2=cc->InputTimestamp();
+    // std::cout<<"pose time:"<<curTime2<<std::endl;
+
+    // std::cout<<"pose!!"<<std::endl;
     frameCount++;
+
+    std::string curState="";
+    std::string curActionType="";
+
+    //detectioncounts
+    const std::tuple<int, int>& detectionCounts= *kDetectionCounts(cc);
+    int personCount=std::get<0>(detectionCounts);
+    int objectCount=std::get<1>(detectionCounts);
+    // std::cout<<"pose:"<<personCount<<","<<objectCount<<std::endl;
 
     bool isFaceExist=true;
 
@@ -600,6 +629,9 @@ class LandmarkWriterCalculator : public Node {
       const mediapipe::NormalizedLandmarkList& landmarks = *kInLandmarks(cc);
   
       const std::pair<int, int>& image_size= *kImageSize(cc);
+
+      // std::cout<<<<std::endl;
+      // std::cout<<std::get<1>(detectionCounts)<<std::endl;
 
       int image_width;
       int image_height;
@@ -626,8 +658,8 @@ class LandmarkWriterCalculator : public Node {
       // PoseAnomalyDetection ad=PoseAnomalyDetection();
       std::tuple<int,double,std::string,std::string> info=poseAnomalyDetection.detectCurrentState(landmarks,image_width,image_height);
       double comparedValue=std::get<1>(info);
-      std::string curState=std::get<2>(info);
-      std::string curActionType=std::get<3>(info);
+      curState=std::get<2>(info);
+      curActionType=std::get<3>(info);
 
       //10프레임마다 유사도 csv에 저장하고 plot하는 코드 
       if (frameCount%poseAnomalyDetection.oksCheckInterval==0 && frameCount>poseAnomalyDetection.oksCheckInterval){
@@ -672,8 +704,9 @@ class LandmarkWriterCalculator : public Node {
             }
 
             //최종판단 :실시간 영상에서 actiontype과 anomaly 최종 판단하는 곳 
-            std::cout<<secondCount<<","<<curSecondState<<","<<curActionType<<std::endl;
-            std::cout<<curActionType<<std::endl;
+            // std::cout<<secondCount<<","<<curSecondState<<","<<curActionType<<std::endl;
+            // std::cout<<secondCount<<","<<curActionType<<std::endl;
+
             file_anomaly << secondCount << ',' << curSecondStateIdx;
             file_anomaly << ',';
             file_anomaly << std::endl;
@@ -723,14 +756,18 @@ class LandmarkWriterCalculator : public Node {
     }
     else
     {
-      std::cout<<"No face / No person"<<std::endl;
+      curState="No Face/No person";
+      curActionType="No Face/No person";
     }
-    
-    
-    
 
-    
 
+    auto curPoseState=absl::make_unique<std::tuple<std::string,std::string>>(std::make_tuple(curState,curActionType));
+
+    //send output
+    cc->Outputs()
+      .Tag(kOutPoseStateTag)
+      .Add(curPoseState.release(), cc->InputTimestamp());
+    
     return mediapipe::OkStatus();
   }
   
